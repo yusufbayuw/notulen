@@ -1,0 +1,103 @@
+# Development/pilot convenience only. Not a production-ready deployment.
+services:
+  db:
+    image: mariadb:11.8
+    environment:
+      MARIADB_DATABASE: notulen
+      MARIADB_USER: notulen
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in root .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in root .env}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file:
+      - apps/web/.env
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET:?Set AI_INTERNAL_SECRET}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - recordings:/app/storage/app/private
+      - laravel-cache:/app/storage/framework
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  queue:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file:
+      - apps/web/.env
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET:?Set AI_INTERNAL_SECRET}
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=2", "--tries=3", "--timeout=60"]
+    volumes:
+      - recordings:/app/storage/app/private
+      - laravel-cache:/app/storage/framework
+    depends_on:
+      - web
+  ai:
+    build:
+      context: .
+      dockerfile: services/ai/Dockerfile
+    environment:
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET:?Set AI_INTERNAL_SECRET}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+  ai-worker:
+    build:
+      context: .
+      dockerfile: services/ai/Dockerfile
+    command: ["rq", "worker", "--url", "redis://redis:6379/0", "notulen-audio"]
+    environment:
+      AI_INTERNAL_SECRET: ${AI_INTERNAL_SECRET:?Set AI_INTERNAL_SECRET}
+      REDIS_URL: redis://redis:6379/0
+      APP_CALLBACK_URL: http://web:8080/api/internal/ai/callback
+      MEDIA_ROOT: /data/audio
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      OLLAMA_URL: http://ollama:11434
+    volumes:
+      - recordings:/data/audio:ro
+      - whisper-cache:/home/aiuser/.cache
+    depends_on:
+      - ai
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  mariadb-data:
+  redis-data:
+  recordings:
+  laravel-cache:
+  whisper-cache:
+  ollama-data:

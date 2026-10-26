@@ -1,0 +1,11 @@
+**/.env
+**/.env.*
+!**/.env.example
+.git
+**/vendor
+**/node_modules
+**/storage/app/private/*
+**/storage/logs/*
+**/public/build
+**/__pycache__
+**/.pytest_cache
