@@ -20,6 +20,7 @@ jobs:
           coverage: none
           extensions: mbstring, pdo_sqlite, sqlite3, fileinfo
           tools: composer:v2
+      - run: cp .env.example .env
       - run: composer validate --no-check-publish
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: php artisan test --stop-on-failure --display-warnings --fail-on-warning
