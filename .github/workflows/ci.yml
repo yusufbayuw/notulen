@@ -22,7 +22,7 @@ jobs:
           tools: composer:v2
       - run: composer validate --no-check-publish
       - run: composer install --no-interaction --prefer-dist --no-progress
-      - run: php artisan test --stop-on-failure
+      - run: php artisan test --stop-on-failure --display-warnings --fail-on-warning
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
